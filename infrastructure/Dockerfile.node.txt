@@ -1,0 +1,15 @@
+
+FROM node:18-alpine
+
+WORKDIR /app
+# Expects package_json.txt to be renamed to package.json
+COPY backend/package.json ./
+RUN npm install
+COPY backend/src ./src
+COPY backend/tsconfig.json ./
+# Expects init_sql.txt to be renamed to init.sql
+COPY backend/init.sql ./
+RUN npm run build
+
+EXPOSE 4000
+CMD ["npm", "start"]
