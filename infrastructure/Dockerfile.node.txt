@@ -1,14 +1,16 @@
-
 FROM node:18-alpine
 
 WORKDIR /app
-# Expects package_json.txt to be renamed to package.json
+
+# COPY uses the actual file names as they will exist after your rename
 COPY backend/package.json ./
 RUN npm install
+
 COPY backend/src ./src
 COPY backend/tsconfig.json ./
-# Expects init_sql.txt to be renamed to init.sql
+# User will rename backend/init_sql.txt to backend/init.sql
 COPY backend/init.sql ./
+
 RUN npm run build
 
 EXPOSE 4000
