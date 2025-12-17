@@ -1,0 +1,5 @@
+{
+  "name": "Inércia BaaS",
+  "description": "A production-grade, self-hosted, multi-tenant Backend-as-a-Service (BaaS) with visual table management, authentication, and RLS enforcement.",
+  "requestFramePermissions": []
+}
