@@ -1,22 +1,25 @@
 
 import { Pool } from 'pg';
 
-/**
- * Connection Pool Manager for Multi-tenancy
- */
 class PoolManager {
   private pools: Map<string, Pool> = new Map();
   private systemPool: Pool;
+  private baseConfig: any;
 
   constructor() {
+    this.baseConfig = {
+      user: 'thales_admin',
+      password: process.env.DB_PASSWORD,
+      host: 'thales_db',
+      port: 5432,
+    };
+
     this.systemPool = new Pool({
-      connectionString: process.env.DATABASE_URL
+      ...this.baseConfig,
+      database: 'thales_system'
     });
   }
 
-  /**
-   * Get connection pool for a specific project
-   */
   async getPool(projectId: string): Promise<Pool> {
     if (projectId === 'SYSTEM_INTERNAL') return this.systemPool;
 
@@ -34,15 +37,12 @@ class PoolManager {
       throw new Error(`Project ${projectId} not found`);
     }
 
-    const config = res.rows[0].db_config;
+    const { database } = res.rows[0].db_config;
     
-    // In a multi-database setup, we'd use config.connectionString.
-    // For single-VPS simple setup, we use the main pool but could set search_path.
-    // For this implementation, we reuse the system pool but strictly scope by project ID in queries.
-    // In production, you would create separate Pools for isolation.
-    
+    // Create a dedicated pool for this client database
     const newPool = new Pool({
-      connectionString: process.env.DATABASE_URL // Pointing to the same DB but we'll use isolation logic
+      ...this.baseConfig,
+      database: database
     });
 
     this.pools.set(projectId, newPool);
