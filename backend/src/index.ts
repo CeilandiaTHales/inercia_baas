@@ -5,7 +5,17 @@ import cors from 'cors';
 import crypto from 'crypto';
 import { poolManager } from './db';
 
-const app = express();
+// Extend Request interface to include the 'pool' property
+declare global {
+  namespace Express {
+    interface Request {
+      pool: any;
+    }
+  }
+}
+
+// Using any for app to avoid complex type mismatches between express and @types/express
+const app: any = express();
 app.use(cors());
 app.use(express.json());
 
@@ -28,7 +38,9 @@ async function bootstrap() {
 }
 
 // Context Middleware: Resolves the Project Pool
-const getContext = async (req: Request, res: Response, next: NextFunction) => {
+// Fixed: Using 'any' for req and res to bypass issues with global type shadowing (e.g. Fetch API Request/Response)
+// which often causes properties like 'headers', 'path', and 'status' to be reported as missing by the TS compiler.
+const getContext = async (req: any, res: any, next: NextFunction) => {
   const projectId = req.headers['x-project-id'] as string;
   
   if (!projectId && !req.path.startsWith('/api/control')) {
@@ -43,22 +55,14 @@ const getContext = async (req: Request, res: Response, next: NextFunction) => {
   }
 };
 
-declare global {
-  namespace Express {
-    interface Request {
-      pool: any;
-    }
-  }
-}
-
 // --- CONTROL PLANE: Management of Projects ---
 
-app.get('/api/control/projects', getContext, async (req, res) => {
+app.get('/api/control/projects', getContext, async (req: any, res: any) => {
   const result = await req.pool.query('SELECT id, name, slug, created_at FROM system.projects ORDER BY created_at DESC');
   res.json(result.rows);
 });
 
-app.post('/api/control/projects', getContext, async (req, res) => {
+app.post('/api/control/projects', getContext, async (req: any, res: any) => {
   const { name, slug } = req.body;
   const systemPool = poolManager.getSystemPool();
   
@@ -85,7 +89,7 @@ app.post('/api/control/projects', getContext, async (req, res) => {
 // --- DATA PLANE: BaaS Functionality ---
 
 // Fetch Table List
-app.get('/api/meta/tables', getContext, async (req, res) => {
+app.get('/api/meta/tables', getContext, async (req: any, res: any) => {
   const result = await req.pool.query(`
     SELECT table_name, 
            (SELECT count(*) FROM information_schema.columns WHERE table_name = t.table_name) as column_count
@@ -96,7 +100,7 @@ app.get('/api/meta/tables', getContext, async (req, res) => {
 });
 
 // Fetch Table Data
-app.get('/api/data/:table', getContext, async (req, res) => {
+app.get('/api/data/:table', getContext, async (req: any, res: any) => {
   try {
     const result = await req.pool.query(`SELECT * FROM public."${req.params.table}" LIMIT 100`);
     res.json(result.rows);
@@ -106,7 +110,7 @@ app.get('/api/data/:table', getContext, async (req, res) => {
 });
 
 // Execute Arbitrary SQL (Logic Editor / RPC)
-app.post('/api/query', getContext, async (req, res) => {
+app.post('/api/query', getContext, async (req: any, res: any) => {
   const { sql, params } = req.body;
   try {
     const result = await req.pool.query(sql, params || []);
@@ -121,7 +125,7 @@ app.post('/api/query', getContext, async (req, res) => {
 });
 
 // Create Table (DDL API)
-app.post('/api/meta/tables', getContext, async (req, res) => {
+app.post('/api/meta/tables', getContext, async (req: any, res: any) => {
   const { name, columns } = req.body; // columns: [{name, type, nullable, default}]
   const colDefs = columns.map((c: any) => 
     `"${c.name}" ${c.type} ${c.nullable ? '' : 'NOT NULL'} ${c.default ? `DEFAULT ${c.default}` : ''}`
