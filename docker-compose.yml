@@ -1,3 +1,4 @@
+
 services:
   thales_db:
     image: postgres:15-alpine
@@ -7,11 +8,11 @@ services:
       POSTGRES_DB: thales_system
       POSTGRES_USER: thales_admin
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: ${GENERIC_TIMEZONE}
     ports:
       - "5432:5432"
     volumes:
       - thales_data:/var/lib/postgresql/data
-      # References renamed file
       - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - inercia_net
@@ -19,13 +20,11 @@ services:
   thales_api:
     build:
       context: .
-      # References renamed file
       dockerfile: infrastructure/Dockerfile.node
     container_name: thales_api
     restart: always
     depends_on:
       - thales_db
-    # References renamed file
     env_file:
       - .env
     environment:
@@ -33,13 +32,13 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       NODE_ENV: production
       PORT: 4000
+      TZ: ${GENERIC_TIMEZONE}
     networks:
       - inercia_net
 
   thales_studio:
     build:
       context: .
-      # References renamed file
       dockerfile: infrastructure/Dockerfile.react
     container_name: thales_studio
     restart: always
@@ -47,6 +46,8 @@ services:
       - "80:80"
     depends_on:
       - thales_api
+    environment:
+      TZ: ${GENERIC_TIMEZONE}
     networks:
       - inercia_net
 

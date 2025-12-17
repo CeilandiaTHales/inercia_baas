@@ -1,11 +1,14 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-// Fix: Import crypto using ES modules to avoid 'require' is not defined error
 import crypto from 'crypto';
 import { poolManager } from './db';
 
-// Extend Request interface to include the 'pool' property
+// Set System Timezone
+if (process.env.TZ) {
+  process.env.TZ = process.env.TZ;
+}
+
 declare global {
   namespace Express {
     interface Request {
@@ -14,19 +17,24 @@ declare global {
   }
 }
 
-// Using any for app to avoid complex type mismatches between express and @types/express
 const app: any = express();
-app.use(cors());
+
+// Production CORS setup
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-project-id']
+}));
+
 app.use(express.json());
 
-// Bootstrapping: Ensures the system is ready
 async function bootstrap() {
   let retries = 5;
   while (retries > 0) {
     try {
       const pool = poolManager.getSystemPool();
       await pool.query('SELECT 1');
-      console.log('Control Plane: Database connected.');
+      console.log(`[${new Date().toISOString()}] Control Plane: Database connected.`);
       return;
     } catch (err) {
       console.error(`Bootstrap failed. Retrying in 5s... (${retries} left)`);
@@ -37,9 +45,6 @@ async function bootstrap() {
   (process as any).exit(1);
 }
 
-// Context Middleware: Resolves the Project Pool
-// Fixed: Using 'any' for req and res to bypass issues with global type shadowing (e.g. Fetch API Request/Response)
-// which often causes properties like 'headers', 'path', and 'status' to be reported as missing by the TS compiler.
 const getContext = async (req: any, res: any, next: NextFunction) => {
   const projectId = req.headers['x-project-id'] as string;
   
@@ -55,8 +60,6 @@ const getContext = async (req: any, res: any, next: NextFunction) => {
   }
 };
 
-// --- CONTROL PLANE: Management of Projects ---
-
 app.get('/api/control/projects', getContext, async (req: any, res: any) => {
   const result = await req.pool.query('SELECT id, name, slug, created_at FROM system.projects ORDER BY created_at DESC');
   res.json(result.rows);
@@ -67,28 +70,19 @@ app.post('/api/control/projects', getContext, async (req: any, res: any) => {
   const systemPool = poolManager.getSystemPool();
   
   try {
-    // 1. Create the Database for the new Project (Logical Isolation)
-    // Note: Database names must be sanitized. We use the slug.
     await systemPool.query(`CREATE DATABASE "${slug}"`);
-    
-    // 2. Register project in system catalog
-    // Fix: Using imported crypto module instead of require
     const jwtSecret = crypto.randomBytes(32).toString('hex');
     const result = await systemPool.query(
       `INSERT INTO system.projects (name, slug, jwt_secret, db_config) 
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [name, slug, jwtSecret, { database: slug }]
     );
-    
     res.status(201).json(result.rows[0]);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// --- DATA PLANE: BaaS Functionality ---
-
-// Fetch Table List
 app.get('/api/meta/tables', getContext, async (req: any, res: any) => {
   const result = await req.pool.query(`
     SELECT table_name, 
@@ -99,7 +93,6 @@ app.get('/api/meta/tables', getContext, async (req: any, res: any) => {
   res.json(result.rows);
 });
 
-// Fetch Table Data
 app.get('/api/data/:table', getContext, async (req: any, res: any) => {
   try {
     const result = await req.pool.query(`SELECT * FROM public."${req.params.table}" LIMIT 100`);
@@ -109,7 +102,6 @@ app.get('/api/data/:table', getContext, async (req: any, res: any) => {
   }
 });
 
-// Execute Arbitrary SQL (Logic Editor / RPC)
 app.post('/api/query', getContext, async (req: any, res: any) => {
   const { sql, params } = req.body;
   try {
@@ -124,9 +116,8 @@ app.post('/api/query', getContext, async (req: any, res: any) => {
   }
 });
 
-// Create Table (DDL API)
 app.post('/api/meta/tables', getContext, async (req: any, res: any) => {
-  const { name, columns } = req.body; // columns: [{name, type, nullable, default}]
+  const { name, columns } = req.body;
   const colDefs = columns.map((c: any) => 
     `"${c.name}" ${c.type} ${c.nullable ? '' : 'NOT NULL'} ${c.default ? `DEFAULT ${c.default}` : ''}`
   ).join(', ');
@@ -141,5 +132,5 @@ app.post('/api/meta/tables', getContext, async (req: any, res: any) => {
 
 const PORT = process.env.PORT || 4000;
 bootstrap().then(() => {
-  app.listen(PORT, () => console.log(`Inércia Engine active on port ${PORT}`));
+  app.listen(PORT, () => console.log(`Inércia Engine active on port ${PORT} [TZ: ${process.env.TZ}]`));
 });
